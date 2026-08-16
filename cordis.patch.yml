@@ -1,0 +1,8 @@
+# dsh-clawd-pet bundle layer: applied automatically when the package is
+# installed (package.json declares dsh.bundle.patch). Inserts the plugin row
+# into the profile composition; later layers (the profile's own
+# cordis.patch.yml, --patch overlays) can override this row by id.
+
+- insert:
+    - id: clawd-pet
+      name: dsh-clawd-pet

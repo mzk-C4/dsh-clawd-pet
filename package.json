@@ -1,0 +1,48 @@
+{
+  "name": "dsh-clawd-pet",
+  "version": "0.1.0",
+  "description": "Clawd on Desk integration for DeepSeek Harness: reports session/agent state to the Clawd desktop pet so it animates along with DSH turns, tools, approvals, and errors.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mzk-C4/dsh-clawd-pet.git"
+  },
+  "homepage": "https://github.com/mzk-C4/dsh-clawd-pet#readme",
+  "bugs": {
+    "url": "https://github.com/mzk-C4/dsh-clawd-pet/issues"
+  },
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./lib/clawd-client.js",
+    "./package.json": "./package.json",
+    "./cordis.patch.yml": "./cordis.patch.yml"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "clawd",
+    "clawd-on-desk",
+    "desktop-pet",
+    "plugin"
+  ],
+  "dependencies": {
+    "@deepseek-ai/schemastery": ">=3.18.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
