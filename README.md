@@ -5,146 +5,155 @@
 [![DSH](https://img.shields.io/badge/DSH%20Desktop-2.x-blue)](package.json)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](package.json)
 
-Drive the Clawd on Desk desktop pet from DeepSeek Harness (DSH): when the DSH agent thinks, calls tools, waits for approval, errors, or completes a turn, the pet animates accordingly — in real time.
+> 让 [Clawd on Desk](https://github.com/rullerzhou-afk/clawd-on-desk) 桌宠跟着 DeepSeek Harness（DSH）的状态一起动起来：DSH 在思考、调工具、等审批、出错、完成回合时，宠物实时切换对应动画。
 
-Runs as a Cordis plugin inside DSH. It listens to the DSH session firehose (`session/created` / `session/event` / `session/disposed` / `agent/error`), translates events into Clawd pet states, and POSTs them to Clawd's local server (`127.0.0.1:23333+/state`) as a registered Clawd "custom application".
+本项目是 DSH（DeepSeek Harness）侧的一个 Cordis 插件（桥接库）：监听 DSH 的会话事件总线，把事件翻译成 Clawd 的宠物状态，POST 到 Clawd 本地服务器（`127.0.0.1:23333+/state`），以 Clawd「自定义应用（custom application）」的身份上报。
 
-## Features
+## 与上游的关系（必读）
 
-- **Real-time pet telemetry** — thinking / working / juggling / notification / attention / error / sweeping / sleeping, mapped from live DSH session events (see table below).
-- **Subagent & workflow aware** — subagent sessions and `tool-workflow` runs fold into their parent session as *juggling*, so the HUD stays clean instead of spawning pet cards per child agent.
-- **Approval alerts** — when DSH waits on you (`approval/asked`), the pet switches to *notification* so you notice the pending approval.
-- **Context-usage ring** — turn completions carry a `context_usage` estimate (used/limit/percent) for the session HUD.
-- **Completion text** — the final assistant message is attached to completion events (clamped to Clawd's 2400-char cap).
-- **Zero footprint** — modifies no existing DSH/Clawd files; all reporting is fire-and-forget on a serial queue, failures only log, the agent loop is never blocked.
-- **Auto-discovery** — Clawd's port is discovered from `~/.clawd/runtime.json` + the 23333–23337 range; the agent id is auto-resolved from Clawd's registered custom applications, falling back to the deterministic hash of the host executable.
-- **No extra runtime deps** — only Node built-ins (`node:http`, `node:crypto`, …) plus the tiny `@deepseek-ai/schemastery` schema package; loads inside every DSH host (DSH Desktop Electron main, `dsh web` node server).
+**本项目借鉴了上游 [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk) 的内容**，在其架构与本地上报协议的基础上，**只新增了一个 DSH 侧的桥接库（即本插件）**：
 
-## State mapping
+- **借鉴自上游**：Clawd「自定义应用」机制、`/state` 本地 HTTP 上报协议、agent id 的确定性哈希算法等。协议细节为逆向自上游源码（`hooks/server-config.js`、`src/server-route-state.js`、`src/custom-applications.js`）。
+- **本仓库新增**：DSH → Clawd 的事件翻译与状态机、子代理/workflow 折算、审批提醒、上下文用量上报、自动发现等（详见下文"功能特性"）。
+- **不含桌宠本体**：本仓库只有插件代码，**不包含** Clawd on Desk 应用本身。桌宠应用本体属于上游项目，需另行安装（见"前置条件"）。
+- **上游许可**：上游仓库采用 **AGPL-3.0** 许可；本仓库按 MIT 发布（如你计划将本项目并入 AGPL 项目或大规模分发，请自行确认许可兼容性）。
 
-| DSH event | Clawd state | Pet animation |
+## 功能特性
+
+- **实时宠物遥测** — 思考 / 工作 / 杂耍 / 通知 / 庆祝 / 报错 / 打扫 / 睡觉，全部由 DSH 实时会话事件驱动（映射见下）。
+- **子代理与 workflow 感知** — 子代理（subagent）会话和 `tool-workflow` 运行统一折算到父会话，表现为 *juggling*（抛球），HUD 不会被子代理卡片刷屏。
+- **审批提醒** — DSH 等你批准时（`approval/asked`），宠物切到 *notification* 提醒你去看 DSH。
+- **上下文用量圆环** — 回合完成时附带 `context_usage` 估算（used/limit/percent），显示在会话 HUD 上。
+- **完成文本** — 完成事件附带最后一条助手消息（按 Clawd 2400 字符上限截断）。
+- **零侵入** — 不修改 DSH/Clawd 任何既有文件；上报全部 fire-and-forget + 串行队列，失败只记日志，绝不阻塞 agent 主循环。
+- **自动发现** — Clawd 端口从 `~/.clawd/runtime.json` + 23333–23337 端口段自动探测；agent id 优先匹配 Clawd 已注册的自定义应用，否则按宿主 exe 路径的确定性哈希计算。
+- **零额外运行依赖** — 只用 Node 内置模块（`node:http`、`node:crypto` 等）+ 极小的 `@deepseek-ai/schemastery` 校验包；可在 DSH 任意宿主（DSH Desktop Electron 主进程、`dsh web` node 服务）内加载。
+
+## 状态映射
+
+| DSH 事件 | Clawd 状态 | 宠物动画 |
 |---|---|---|
-| prompt submit / `turn/start` / model streaming | `thinking` | thinking |
-| `tool/call`, `tool/result` | `working` | typing |
-| subagent session active / workflow run | `juggling` | juggling |
-| `approval/asked` (waiting on you) | `notification` | alerts you |
-| `turn/end` (reason=completed/max-tokens) | `attention` | celebrates |
-| `turn/end` (reason=error), `agent/error`, tool failure | `error` | error |
-| `compaction/start` (context compaction) | `sweeping` | sweeping |
-| session disposed / DSH shutdown | `sleeping` | card removed |
+| 用户提交 prompt / `turn/start` / 模型开始输出 | `thinking` | 思考 |
+| `tool/call`、`tool/result` | `working` | 敲键盘干活 |
+| 子代理（subagent）会话激活 / workflow 运行 | `juggling` | 抛球杂耍 |
+| `approval/asked`（等你批准） | `notification` | 提醒你去看 DSH |
+| `turn/end`（reason=completed/max-tokens） | `attention` | 庆祝完成 |
+| `turn/end`（reason=error）、`agent/error`、工具失败 | `error` | 报错 |
+| `compaction/start`（上下文压缩） | `sweeping` | 打扫卫生 |
+| 会话结束 / DSH 关闭 | `sleeping` | 收起会话卡片 |
 
-Subagent sessions fold into their parent session (`SubagentStart`/`SubagentStop`) so the HUD stays clean. Turn completions carry the last assistant message text (`assistant_last_output`), the model name, and a context-usage estimate (`context_usage`).
+子代理会话统一折算到父会话上报（`SubagentStart`/`SubagentStop`），不会刷屏 HUD。完成回合时附带最后一条助手消息文本（`assistant_last_output`）、模型名与上下文用量估算（`context_usage`）。
 
-## How it works
+## 工作原理
 
 ```
-DSH session firehose                    dsh-clawd-pet (Cordis plugin)              Clawd on Desk
-─────────────────────────              ──────────────────────────────             ──────────────
-session/created ──────────┐            ┌──────────────────────────┐   POST /state   ┌─────────────┐
-session/event   ──────────┼──────────▶ │ event → Clawd state map   │ ─────────────▶ │ local HTTP  │
-agent/error     ──────────┘            │ agent id resolve          │  x-clawd-server │ server      │
-session/disposed                       │ port autodiscovery        │  200/204/400   │ 127.0.0.1   │
-                                       │ throttle + serial queue   │                │ :23333-23337│
-                                       │ fire-and-forget POSTs     │                └─────────────┘
-                                       └──────────────────────────┘
+DSH 会话事件流                       dsh-clawd-pet (Cordis 插件)                Clawd on Desk
+─────────────────────────           ──────────────────────────────             ──────────────
+session/created ──────────┐         ┌──────────────────────────┐   POST /state   ┌─────────────┐
+session/event   ──────────┼───────▶ │ 事件 → Clawd 状态映射      │ ─────────────▶ │ 本地 HTTP   │
+agent/error     ──────────┘         │ agent id 解析             │  x-clawd-server │ 服务器      │
+session/disposed                    │ 端口自动发现               │  200/204/400   │ 127.0.0.1   │
+                                    │ 节流 + 串行队列            │                │ :23333-23337│
+                                    │ fire-and-forget POST      │                └─────────────┘
+                                    └──────────────────────────┘
 ```
 
-- **Wire protocol** was reverse-engineered from Clawd on Desk's `hooks/server-config.js`, `src/server-route-state.js`, `src/custom-applications.js`: `/state` POST with the `x-clawd-server: clawd-on-desk` header check; 200 = accepted, 204 = dropped (agent id unknown/disabled), 400 = unknown state.
-- **Agent id** is deterministic: `custom-<slug>-<sha256(lower(exePath))[:12]>` on Windows, mirroring Clawd's `custom-applications.js` hashing — so the id the plugin computes always matches what Clawd registers for the same executable.
-- **Session adoption** — on plugin load, already-open sessions are adopted (`sessions.list()`), so the pet recovers after host restarts.
-- **Teardown** — on dispose the plugin best-effort posts `sleeping`; even if that is lost, Clawd's `agent_pid` liveness check reaps cards when the DSH process exits.
+- **线上协议**（借鉴上游）：`/state` POST + `x-clawd-server: clawd-on-desk` 头校验；200 = 接受，204 = 丢弃（agent id 未注册/被禁用），400 = 未知状态。
+- **Agent id 确定性生成**（借鉴上游算法）：`custom-<slug>-<sha256(小写 exe 路径)[:12]>`（Windows），与 Clawd 的 `custom-applications.js` 哈希一致——插件算出来的 id 永远等于 Clawd 为同一可执行文件注册的 id。
+- **会话收养** — 插件加载时通过 `sessions.list()` 收养已存在的会话，宿主重启后宠物状态能自动恢复。
+- **退出清理** — dispose 时尽力补发 `sleeping`；即便没发出去，Clawd 会按 `agent_pid` 存活检测自动清理（DSH 进程退出即收卡）。
 
-## Prerequisites
+## 前置条件
 
-> **Availability note — read this first.** This repository only contains the DSH-side plugin. It does **not** bundle the Clawd on Desk app itself, and at the time of writing Clawd on Desk is distributed through a closed channel (private GitHub Releases / its own updater, v0.15.0 observed), *not* a public download — the `anthropics/clawd-on-desk` GitHub link that is sometimes cited does not resolve publicly. DSH Desktop itself is likewise not a public open-source download. If you cannot obtain the Clawd on Desk app, the pet will not appear no matter how this plugin is installed; treat this plugin as a remote control for an app you already have.
+> **可用性说明（先读这个）**：本仓库只包含 DSH 侧插件，**不包含** Clawd on Desk 应用本体。截至撰写时，Clawd on Desk 通过封闭渠道分发（私有 GitHub Releases / 自带更新器，观察到 v0.15.0），**没有公开下载**。拿不到桌宠应用本体的人，装了这个插件也不会有宠物出现——请把本插件理解成"已有宠物应用的遥控器"。
 
-1. Clawd on Desk installed and running (local server on port 23333–23337, recorded in `~/.clawd/runtime.json`).
-2. DSH registered in Clawd as a **custom application** (Settings → Agents → add custom application; pick `DSH Desktop.exe` or its folder — both resolve identically). The id is deterministic: `custom-dsh-desktop-<sha256(lowercased exe path)[:12]>`.
-3. DSH Desktop 2.x (desktop profile at `~/.dsh/profiles/desktop`).
+1. 已安装并运行 Clawd on Desk（本地端口 23333–23337 之一，`~/.clawd/runtime.json` 有记录）。
+2. 在 Clawd 设置里把 DSH 注册为**自定义应用**（Settings → Agents → Add custom application，选择 `DSH Desktop.exe` 或其所在文件夹都行）。注册的 id 是确定性的：`custom-dsh-desktop-<sha256(exe路径小写)[:12]>`。
+3. DSH Desktop 2.x（desktop profile，`~/.dsh/profiles/desktop`）。
 
-## Install
+## 安装
 
-```bash
-cd dsh-clawd-pet && pnpm install
-dsh plugin --profile desktop add /abs/path/to/dsh-clawd-pet
-# then restart DSH Desktop
+```powershell
+cd dsh-clawd-pet
+pnpm install   # 安装 schemastery 依赖
+dsh plugin --profile desktop add /绝对/路径/dsh-clawd-pet
+# 然后重启 DSH Desktop
 ```
 
-> Note: `dsh plugin add`'s pnpm argument forwarding breaks on paths with spaces/full-width characters. If your checkout lives under such a path (as on this machine), install manually: add `"dsh-clawd-pet": "link:<abs path>"` to `~/.dsh/profiles/desktop/package.json` dependencies, append `"dsh-clawd-pet"` to `dsh.profile.bundles`, then run `pnpm install` inside the profile directory.
+> 注意：`dsh plugin add` 的 pnpm 参数转发在路径含空格/全角字符时会断开。如果你的 checkout 在这样的路径下（比如本机），请手动安装：在 `~/.dsh/profiles/desktop/package.json` 的 `dependencies` 里加 `"dsh-clawd-pet": "link:<绝对路径>"`，把 `dsh-clawd-pet` 追加进 `dsh.profile.bundles`，然后在 profile 目录里执行 `pnpm install`。
 
-## Verify
+## 验证
 
-```bash
-dsh --profile desktop --dump-config | grep clawd        # composition includes the plugin row
-node test/e2e.mjs                                        # live protocol + animation test against Clawd
+```powershell
+# 1) 合成配置应包含 clawd-pet 行
+dsh --profile desktop --dump-config | Select-String clawd
+
+# 2) 直接对 Clawd 发一条测试状态（宠物应当场表演）
+node test/e2e.mjs
 ```
 
-## Configuration (Web settings → plugins → clawd-pet)
+重启 DSH Desktop 后随便发起一个对话：宠物应在提交时思考、调工具时敲键盘、结束时庆祝。
 
-| key | default | meaning |
+## 配置（Web 设置 → 插件 → clawd-pet）
+
+| 键 | 默认 | 说明 |
 |---|---|---|
-| `enabled` | `true` | master switch |
-| `agentId` | `""` | force a Clawd agent id (empty = auto: match Clawd's registered custom app, else compute from this host exe) |
-| `port` | `0` | force Clawd port (0 = autodiscover) |
-| `subagents` | `true` | map subagents to juggling |
-| `contextUsage` | `true` | report context-usage estimate (HUD ring) |
-| `toolFailures` | `true` | play a one-shot error animation on single tool failures |
-| `completionText` | `true` | attach the final assistant message on completion |
-| `minIntervalMs` | `200` | per-session throttle window (state transitions bypass it) |
-| `timeoutMs` | `1200` | POST timeout |
+| `enabled` | `true` | 总开关 |
+| `agentId` | `""` | 强制指定 Clawd agent id（留空自动解析：先匹配 Clawd 配置里注册的自定义应用，再按本进程 exe 路径计算） |
+| `port` | `0` | 强制 Clawd 端口（0 = 自动发现） |
+| `subagents` | `true` | 子代理映射为 juggling |
+| `contextUsage` | `true` | 上报上下文用量估算（HUD 圆环） |
+| `toolFailures` | `true` | 单个工具失败也播放一次错误动画 |
+| `completionText` | `true` | 完成时附带最后一条助手消息文本 |
+| `minIntervalMs` | `200` | 同一会话节流窗口（关键状态转换不受限） |
+| `timeoutMs` | `1200` | POST 超时 |
 
-## Project structure
+## 项目结构
 
 ```
 dsh-clawd-pet/
-├── index.js               # Cordis plugin: config schema, event handling, state machine
+├── index.js               # Cordis 插件：配置 schema、事件处理、状态机
 ├── lib/
-│   └── clawd-client.js    # Clawd local-server client: id hashing, port discovery, POST/probe
+│   └── clawd-client.js    # Clawd 本地服务器客户端：id 哈希、端口发现、POST/探测
 ├── test/
-│   ├── smoke.mjs          # plugin loads with a mocked session store
-│   ├── mapping.mjs        # DSH event → Clawd state mapping unit tests
-│   ├── clawd-id-roundtrip.mjs  # custom-application id hash roundtrip
-│   ├── live-protocol.mjs  # protocol against a running Clawd (if any)
-│   ├── e2e.mjs            # live protocol + animation test against Clawd
+│   ├── smoke.mjs          # 用 mock 会话存储验证插件可加载
+│   ├── mapping.mjs        # DSH 事件 → Clawd 状态映射单元测试
+│   ├── clawd-id-roundtrip.mjs  # 自定义应用 id 哈希往返测试
+│   ├── live-protocol.mjs  # 对运行中的 Clawd 做协议测试（如有）
+│   ├── e2e.mjs            # 对 Clawd 的线上协议 + 动画测试
 │   └── ...
-├── cordis.patch.yml       # DSH bundle patch metadata
+├── cordis.patch.yml       # DSH bundle patch 元数据
 ├── package.json
 └── README.md / README.zh.md
 ```
 
-## Development
+## 开发
 
 ```bash
 pnpm install
-node test/smoke.mjs          # offline smoke test, no Clawd needed
-node test/mapping.mjs        # state-mapping unit tests
-node test/e2e.mjs            # requires Clawd on Desk running
+node test/smoke.mjs          # 离线冒烟测试，不需要 Clawd
+node test/mapping.mjs        # 状态映射单元测试
+node test/e2e.mjs            # 需要 Clawd on Desk 在运行
 ```
 
-Contributions welcome: keep the plugin dependency-free (Node built-ins only), keep reporting non-blocking, and add a test for every new event mapping.
+欢迎贡献：请保持插件零额外依赖（只用 Node 内置模块）、上报非阻塞，并为每个新的事件映射补一个测试。
 
-## Troubleshooting
+## 故障排查
 
-- **Pet never reacts**: Clawd running? (`~/.clawd/runtime.json`, probe `/state`.) DSH Desktop restarted after install? (log line `clawd-pet: loaded`.)
-- **Log says "dropping our events"**: agent id not registered/disabled in Clawd → register DSH Desktop in Clawd settings and restart Clawd.
-- **Uninstall**: `dsh plugin --profile desktop remove dsh-clawd-pet`, restart DSH Desktop; remove the custom application in Clawd.
+- **宠物完全不动**：确认 Clawd 在运行（`~/.clawd/runtime.json` 存在且端口可探测）；确认 DSH Desktop 已重启加载插件（日志应出现 `clawd-pet: loaded`）。
+- **日志报 "Clawd on Desk is dropping our events"**：agent id 没注册或被禁用。去 Clawd 设置 → Agents 确认 DSH Desktop 已在自定义应用列表且启用；改完后重启 Clawd。
+- **卸载**：`dsh plugin --profile desktop remove dsh-clawd-pet`（或从 profile package.json 删掉依赖与 bundles 项后 `pnpm install`），再重启 DSH Desktop；Clawd 侧删除自定义应用即可。
 
-## Implementation notes
+## 致谢与参考
 
-- Protocol reverse-engineered from Clawd on Desk's `hooks/server-config.js`, `src/server-route-state.js`, `src/custom-applications.js`: local HTTP wire format (`/state` POST, `x-clawd-server` header, 200/204/400 semantics) and the custom-application id hash (`custom-<slug>-sha256(lower(exePath))[:12]` on Windows).
-- Zero-footprint: modifies no existing DSH/Clawd files. Reporting failures only log — the agent loop is never blocked (fire-and-forget POSTs on a serial queue).
-- On dispose it best-effort posts `sleeping`; even if that is lost, Clawd's `agent_pid` liveness check reaps cards when the DSH process exits.
+- 本项目的协议实现与架构设计借鉴自上游 **Clawd on Desk**（[rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk)，AGPL-3.0）。上游仓库自带 DSH 集成文档（`docs/guides/dsh-setup.md`）与一个简化版桥接插件（`hooks/dsh-clawd-bridge`）；本项目是功能更完整的独立实现，可作为替代或参考。
+- 上游桌宠本体不在本仓库内，需从其官方更新渠道获取。
 
-## Changelog
+## 更新日志
 
 ### 0.1.0 (2026-08-16)
 
-- Initial release: full DSH → Clawd state mapping, subagent/workflow folding, approval notifications, context-usage ring, completion text, port/agent-id autodiscovery, session adoption, zero-footprint teardown.
-
-## Related
-
-- Clawd on Desk — the desktop pet this plugin drives (closed distribution; obtain it from its official updater channel)
-- DeepSeek Harness (DSH) — the agent harness this plugin runs inside (DSH Desktop 2.x)
+- 首个版本：完整的 DSH → Clawd 状态映射、子代理/workflow 折算、审批通知、上下文用量圆环、完成文本、端口与 agent id 自动发现、会话收养、零侵入退出清理。
 
 ## License
 
