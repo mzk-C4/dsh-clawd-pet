@@ -2,10 +2,10 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](package.json)
-[![DSH](https://img.shields.io/badge/DSH%20Desktop-2.x-blue)](https://github.com/deepseek-ai/dsh)
+[![DSH](https://img.shields.io/badge/DSH%20Desktop-2.x-blue)](package.json)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](package.json)
 
-Drive the [Clawd on Desk](https://github.com/anthropics/clawd-on-desk) desktop pet from DeepSeek Harness (DSH): when the DSH agent thinks, calls tools, waits for approval, errors, or completes a turn, the pet animates accordingly — in real time.
+Drive the Clawd on Desk desktop pet from DeepSeek Harness (DSH): when the DSH agent thinks, calls tools, waits for approval, errors, or completes a turn, the pet animates accordingly — in real time.
 
 Runs as a Cordis plugin inside DSH. It listens to the DSH session firehose (`session/created` / `session/event` / `session/disposed` / `agent/error`), translates events into Clawd pet states, and POSTs them to Clawd's local server (`127.0.0.1:23333+/state`) as a registered Clawd "custom application".
 
@@ -55,6 +55,8 @@ session/disposed                       │ port autodiscovery        │  200/20
 - **Teardown** — on dispose the plugin best-effort posts `sleeping`; even if that is lost, Clawd's `agent_pid` liveness check reaps cards when the DSH process exits.
 
 ## Prerequisites
+
+> **Availability note — read this first.** This repository only contains the DSH-side plugin. It does **not** bundle the Clawd on Desk app itself, and at the time of writing Clawd on Desk is distributed through a closed channel (private GitHub Releases / its own updater, v0.15.0 observed), *not* a public download — the `anthropics/clawd-on-desk` GitHub link that is sometimes cited does not resolve publicly. DSH Desktop itself is likewise not a public open-source download. If you cannot obtain the Clawd on Desk app, the pet will not appear no matter how this plugin is installed; treat this plugin as a remote control for an app you already have.
 
 1. Clawd on Desk installed and running (local server on port 23333–23337, recorded in `~/.clawd/runtime.json`).
 2. DSH registered in Clawd as a **custom application** (Settings → Agents → add custom application; pick `DSH Desktop.exe` or its folder — both resolve identically). The id is deterministic: `custom-dsh-desktop-<sha256(lowercased exe path)[:12]>`.
@@ -141,8 +143,8 @@ Contributions welcome: keep the plugin dependency-free (Node built-ins only), ke
 
 ## Related
 
-- [Clawd on Desk](https://github.com/anthropics/clawd-on-desk) — the desktop pet this plugin drives
-- [DeepSeek Harness](https://github.com/deepseek-ai/dsh) — the agent harness this plugin runs inside
+- Clawd on Desk — the desktop pet this plugin drives (closed distribution; obtain it from its official updater channel)
+- DeepSeek Harness (DSH) — the agent harness this plugin runs inside (DSH Desktop 2.x)
 
 ## License
 

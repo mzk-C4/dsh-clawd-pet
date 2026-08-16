@@ -2,10 +2,10 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](package.json)
-[![DSH](https://img.shields.io/badge/DSH%20Desktop-2.x-blue)](https://github.com/deepseek-ai/dsh)
+[![DSH](https://img.shields.io/badge/DSH%20Desktop-2.x-blue)](package.json)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](package.json)
 
-让 [Clawd on Desk](https://github.com/anthropics/clawd-on-desk) 桌面宠物跟着 DeepSeek Harness（DSH）的状态一起动起来：DSH 在思考、调工具、等审批、出错、完成回合时，宠物会实时切换对应的动画。
+让 Clawd on Desk 桌面宠物跟着 DeepSeek Harness（DSH）的状态一起动起来：DSH 在思考、调工具、等审批、出错、完成回合时，宠物会实时切换对应的动画。
 
 DSH 侧以 Cordis 插件形式运行，监听 DSH 会话事件总线（`session/created` / `session/event` / `session/disposed` / `agent/error`），把事件翻译成 Clawd 的宠物状态，POST 到 Clawd 本地服务器（`127.0.0.1:23333+/state`），以 Clawd「自定义应用（custom application）」的身份上报。
 
@@ -56,7 +56,9 @@ session/disposed                    │ 端口自动发现               │  20
 
 ## 前置条件
 
-1. 已安装并运行 [Clawd on Desk](https://github.com/anthropics/clawd-on-desk)（本地端口 23333–23337 之一，`~/.clawd/runtime.json` 有记录）。
+> **可用性说明（先读这个）**：本仓库只包含 DSH 侧插件，**不包含** Clawd on Desk 应用本体。截至撰写时，Clawd on Desk 通过封闭渠道分发（私有 GitHub Releases / 自带更新器，观察到 v0.15.0），**没有公开下载**——网上流传的 `anthropics/clawd-on-desk` GitHub 链接实际无法公开访问；DSH Desktop 同样不是公开开源下载。拿不到 Clawd on Desk 应用本体的人，装了这个插件也不会有宠物出现——请把本插件理解成"已有宠物应用的遥控器"。
+
+1. 已安装并运行 Clawd on Desk（本地端口 23333–23337 之一，`~/.clawd/runtime.json` 有记录）。
 2. 在 Clawd 设置里把 DSH 注册为**自定义应用**（Settings → Agents → Add custom application，选择 `DSH Desktop.exe` 或其所在文件夹都行）。注册的 id 是确定性的：`custom-dsh-desktop-<sha256(exe路径小写)[:12]>`。
 3. DSH Desktop 2.x（desktop profile，`~/.dsh/profiles/desktop`）。
 
@@ -147,8 +149,8 @@ node test/e2e.mjs            # 需要 Clawd on Desk 在运行
 
 ## 相关项目
 
-- [Clawd on Desk](https://github.com/anthropics/clawd-on-desk) — 本插件驱动的桌面宠物
-- [DeepSeek Harness](https://github.com/deepseek-ai/dsh) — 本插件运行所在的 Agent 框架
+- Clawd on Desk — 本插件驱动的桌面宠物（封闭分发，需从其官方更新渠道获取）
+- DeepSeek Harness（DSH）— 本插件运行所在的 Agent 框架（DSH Desktop 2.x）
 
 ## License
 
